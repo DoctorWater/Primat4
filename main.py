@@ -1,16 +1,31 @@
-import numpy as np
 import matplotlib.pyplot as plt
 import numdifftools as nd
+import numpy as np
 
 
-def random_quadratic(n, k):
-    Q = np.random.randn(n, n)
-    Q = np.dot(Q.T, Q)
-    eigvals = np.linalg.eigvalsh(Q)
-    Q = Q * k / (eigvals[-1] - eigvals[0])
-    b = np.random.randn(n)
-    c = np.random.randn()
-    return lambda x: 0.5 * np.dot(x.T, np.dot(Q, x)) + np.dot(b.T, x) + c
+def generate_quadratic_function(num_variables, condition_number):
+    # Генерация случайной положительно определенной матрицы A
+    A = np.random.rand(num_variables, num_variables)
+    A = np.dot(A, A.transpose())
+
+    # Вычисление степени обусловленности матрицы A
+    _, s, _ = np.linalg.svd(A)
+    if np.min(s) > 0:
+        cond = np.max(s) / np.min(s)
+    else:
+        cond = np.inf
+
+    # Масштабирование матрицы A для достижения заданной степени обусловленности
+    A = A * (condition_number / cond) ** 0.5
+
+    # Генерация случайного вектора b
+    b = np.random.rand(num_variables)
+
+    # Обычная функция, вычисляющая значение квадратичной функции для вектора x
+    def quadratic_function(x):
+        return 0.5 * np.dot(x, np.dot(A, x)) - np.dot(b, x)
+
+    return quadratic_function
 
 
 def f(x):
@@ -55,38 +70,34 @@ def constGradient():
     return np.array(path)
 
 
-def stepDivision():
-    # Определение начальной точки
-    x0 = np.array([-2, 3])
-
+def stepDivision(current_function, x0_0):
     # Параметры градиентного спуска
     alpha = 1  # Начальное значение шага
     beta = 0.5  # Коэффициент дробления шага
     c = 0.5  # Коэффициент уловия Армихо
     grad_tol = 1e-6  # Порог точности для градиента
     iterCount = 0
-    path = [x0]
+    path = [x0_0]
     # Цикл градиентного спуска
     max_iter = 1000
     for i in range(max_iter):
-        grad = df(x0)  # Вычисление градиента
+        grad = gradient(current_function, x0_0)  # Вычисление градиента
         d = -grad  # Направление движения
         alpha0 = alpha  # Запоминаем начальное значение шага
-        while f(x0 + alpha * d) > f(x0) + c * alpha * np.dot(grad, d):
+        while current_function(x0_0 + alpha * d) > current_function(x0_0) + c * alpha * np.dot(grad, d):
             alpha *= beta  # Дробим шаг
-        x1 = x0 + alpha * d  # Обновление значения переменных
+        x1 = x0_0 + alpha * d  # Обновление значения переменных
         if np.linalg.norm(grad) < grad_tol:  # Проверка на достижение точности
             break
-        x0 = x1  # Перезапись значения переменных
+        x0_0 = x1  # Перезапись значения переменных
         alpha = alpha0  # Возвращаем начальное значение шага
         iterCount += 1
-        path.append(x0)
+        path.append(x0_0)
 
     # Вывод результата
-    print("Step division method")
-    print("Минимум функции достигается в точке:", x0)
-    print("Значение функции в этой точке:", f(x0))
-    print("Количество итераций:", iterCount)
+    print("Минимум функции достигается в точке:", x0_0)
+    print("Значение функции в этой точке:", current_function(x0_0))
+    print("Количество итераций:", iterCount, "\n")
     return np.array(path)
 
 
@@ -197,6 +208,9 @@ def draw(path, name):
     plt.show()
 
 
-for i in range(1000):
-    for j in range(1000):
-        stepDivision()
+x0_0 = np.array([1])
+for i in range(1, 1000):
+    for j in range(1, 1000):
+        stepDivision(generate_quadratic_function(i, j), x0_0)
+        print("Количество переменных: ", i, " Степень обусловленности: ", j)
+    x0_0 = np.append(x0_0, [1])
