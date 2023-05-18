@@ -1,6 +1,9 @@
 import matplotlib.pyplot as plt
 import numdifftools as nd
 import numpy as np
+from openpyxl import Workbook
+
+ITER_COUNT_GLOBAL = 0
 
 
 def generate_quadratic_function(num_variables, condition_number):
@@ -98,6 +101,8 @@ def stepDivision(current_function, x0_0):
     print("Минимум функции достигается в точке:", x0_0)
     print("Значение функции в этой точке:", current_function(x0_0))
     print("Количество итераций:", iterCount, "\n")
+    global ITER_COUNT_GLOBAL
+    ITER_COUNT_GLOBAL = iterCount
     return np.array(path)
 
 
@@ -208,9 +213,19 @@ def draw(path, name):
     plt.show()
 
 
+wb = Workbook()
+sheet = wb.active
+column = 2
+sheet['A1'] = "Количество переменных"
+sheet['B1'] = "Степень обусловленности"
+sheet['C1'] = "Количество итераций"
 x0_0 = np.array([1])
-for i in range(1, 1000):
-    for j in range(1, 1000):
+for i in range(1, 21):
+    for j in range(1, 21):
         stepDivision(generate_quadratic_function(i, j), x0_0)
-        print("Количество переменных: ", i, " Степень обусловленности: ", j)
+        sheet['A' + str(column)] = i
+        sheet['B' + str(column)] = j
+        sheet['C' + str(column)] = ITER_COUNT_GLOBAL
+        column += 1
     x0_0 = np.append(x0_0, [1])
+wb.save("example.xlsx")
