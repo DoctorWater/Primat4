@@ -15,6 +15,10 @@ def compute_error(A, x, b):
     return error
 
 
+def compute_condition_number(A):
+    return np.linalg.cond(A)
+
+
 def generate_matrix_A(n, k):
     A = np.zeros((n, n))
 
@@ -89,6 +93,7 @@ def lu_decomposition(A):
 
     return L, U
 
+
 def solve_lu(L, U, b):
     n = L.shape[0]
     y = np.zeros(n)
@@ -139,13 +144,16 @@ error_gauss = []
 error_lu = []
 error_jacobi = []
 
+cond = []
+
 for k_cur in k:
+
     while 1:
         A, F = generate_system_data(n, k_cur)
         det_A = np.linalg.det(A)
         if det_A != 0:
             break
-
+    cond.append(compute_condition_number(A))
     x0 = np.zeros(n)
     L, U = lu_decomposition(A)
     x = gauss_elimination(A, F)
@@ -184,6 +192,15 @@ plt.plot(k, error_jacobi)
 plt.xlabel('Коэффициент k')
 plt.ylabel('Погрешность')
 plt.title('Погрешности при изменении k (Метод Якоби)')
+
+# Отображение графика
+plt.show()
+
+plt.plot(k, cond)
+# Настройка осей и заголовка
+plt.xlabel('Коэффициент k')
+plt.ylabel('Обусловленность')
+plt.title('Зависимость числа обусловленности от k')
 
 # Отображение графика
 plt.show()
