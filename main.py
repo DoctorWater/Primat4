@@ -1,231 +1,152 @@
-import matplotlib.pyplot as plt
-import numdifftools as nd
 import numpy as np
-from openpyxl import Workbook
-
-ITER_COUNT_GLOBAL = 0
-
-
-def generate_quadratic_function(num_variables, condition_number):
-    # Генерация случайной положительно определенной матрицы A
-    A = np.random.rand(num_variables, num_variables)
-    A = np.dot(A, A.transpose())
-
-    # Вычисление степени обусловленности матрицы A
-    _, s, _ = np.linalg.svd(A)
-    if np.min(s) > 0:
-        cond = np.max(s) / np.min(s)
-    else:
-        cond = np.inf
-
-    # Масштабирование матрицы A для достижения заданной степени обусловленности
-    A = A * (condition_number / cond) ** 0.5
-
-    # Генерация случайного вектора b
-    b = np.random.rand(num_variables)
-
-    # Обычная функция, вычисляющая значение квадратичной функции для вектора x
-    def quadratic_function(x):
-        return 0.5 * np.dot(x, np.dot(A, x)) - np.dot(b, x)
-
-    return quadratic_function
+import scipy.sparse as sp
+import numpy.linalg as la
+from matplotlib import pyplot as plt
 
 
-def f(x):
-    return (x[0] + x[1]) ** 2 - 5
+def generate_system_data(n, k):
+    A = generate_matrix_A(n, k)
+    F = generate_vector_F(n)
+    return A, F
 
 
-def func(x, y):
-    return (x + y) ** 2 - 5
+def generate_matrix_A(n, k):
+    A = np.zeros((n, n))
+
+    for i in range(n):
+        row_sum = 0
+        for j in range(n):
+            if i != j:
+                A[i, j] = np.random.choice([-4, -3, -2, -1, 0])
+                row_sum += abs(A[i, j])
+
+        if i == 0:
+            A[i, i] = -row_sum + 10 ** (-k)
+        else:
+            A[i, i] = -row_sum
+
+    return A
 
 
-def df(x):
-    con_fin = lambda inner_x: (inner_x[0] + inner_x[1]) ** 2 - 5
-    return gradient(con_fin, x)
+def generate_vector_F(n):
+    return np.arange(1, n + 1)
 
 
-def gradient(x, y):
-    return nd.Gradient(x)(y)
+# Метод Гаусса
+def gauss_elimination(A, b):
+    n = len(A)
+
+    # Прямой ход метода Гаусса
+    for i in range(n):
+        # Поиск ведущего элемента в столбце i
+        max_index = i
+        for j in range(i + 1, n):
+            if abs(A[j, i]) > abs(A[max_index, i]):
+                max_index = j
+
+        # Обмен строк, если найденный ведущий элемент не находится в текущей строке
+        if max_index != i:
+            A[[i, max_index]] = A[[max_index, i]]
+            b[[i, max_index]] = b[[max_index, i]]
+
+        # Приведение к треугольному виду
+        for j in range(i + 1, n):
+            factor = A[j, i] // A[i, i]
+            A[j, i:] -= factor * A[i, i:]
+            b[j] -= factor * b[i]
+
+    # Обратный ход метода Гаусса
+    x = np.zeros(n, dtype=float)
+    for i in range(n - 1, -1, -1):
+        x[i] = (b[i] - np.dot(A[i, i + 1:], x[i + 1:])) // A[i, i]
+
+    return x
 
 
-def constGradient():
-    x = np.array([-2, 3])
+# Метод LU-разложения
+def lu_decomposition(A):
+    n = A.shape[0]
+    L = sp.eye(n, format='lil')  # Единичная матрица L
+    U = sp.lil_matrix((n, n))  # Пустая матрица U
 
-    # Задаем постоянный шаг
-    alpha = 0.1
+    for k in range(n):
+        U[k, k] = A[k, k] - L[k, :k].dot(U[:k, k].toarray().flatten())
+        for i in range(k + 1, n):
+            L[i, k] = (A[i, k] - L[i, :k].dot(U[:k, k].toarray().flatten())) / U[k, k]
+        for j in range(k + 1, n):
+            U[k, j] = A[k, j] - L[k, :k].dot(U[:k, j].toarray().flatten())
 
-    # Задаем максимальное число итераций
-    max_iterations = 200
-
-    path = [x]
-    # Начинаем итерации
-    print("Constant Gradient method")
-    for i in range(max_iterations):
-        # Вычисляем градиент в текущей точке
-        grad = df(x)
-        # Обновляем значение точки по формуле градиентного спуска
-        x = x - alpha * grad
-        # Вычисляем значение функции в новой точке
-        f_val = f(x)
-        # Выводим информацию о текущей итерации
-        path.append(x)
-    print("Iterations:", max_iterations, "Point:", x[0], ",", x[1], " Function value:", f_val)
-    return np.array(path)
+    return L, U
 
 
-def stepDivision(current_function, x0_0):
-    # Параметры градиентного спуска
-    alpha = 1  # Начальное значение шага
-    beta = 0.5  # Коэффициент дробления шага
-    c = 0.5  # Коэффициент уловия Армихо
-    grad_tol = 1e-6  # Порог точности для градиента
-    iterCount = 0
-    path = [x0_0]
-    # Цикл градиентного спуска
-    max_iter = 1000
-    for i in range(max_iter):
-        grad = gradient(current_function, x0_0)  # Вычисление градиента
-        d = -grad  # Направление движения
-        alpha0 = alpha  # Запоминаем начальное значение шага
-        while current_function(x0_0 + alpha * d) > current_function(x0_0) + c * alpha * np.dot(grad, d):
-            alpha *= beta  # Дробим шаг
-        x1 = x0_0 + alpha * d  # Обновление значения переменных
-        if np.linalg.norm(grad) < grad_tol:  # Проверка на достижение точности
+def solve_lu(L, U, b):
+    n = L.shape[0]
+    y = np.zeros(n)
+    x = np.zeros(n)
+
+    # Решение Ly = b
+    for i in range(n):
+        y[i] = (b[i] - L[i, :i].dot(y[:i])) / L[i, i]
+
+    # Решение Ux = y
+    for i in range(n - 1, -1, -1):
+        x[i] = (y[i] - U[i, i + 1:].dot(x[i + 1:])) / U[i, i]
+
+    return x
+
+
+# Метод Якоби
+def jacobi(A, b, x0, max_iterations=100, tolerance=1e-6):
+    n = len(A)
+    x = x0.copy()
+
+    for _ in range(max_iterations):
+        x_new = np.zeros(n)
+        for i in range(n):
+            x_new[i] = (b[i] - A[i, :].dot(x) + A[i, i] * x[i]) / A[i, i]
+
+        if np.linalg.norm(x_new - x) < tolerance:
+            return x_new
+
+        x = x_new
+
+    return x
+
+
+def evaluate_jacobi(N, K):
+    while 1:
+        A, F = generate_system_data(N, K)
+        det_A = np.linalg.det(A)
+        if det_A != 0:
             break
-        x0_0 = x1  # Перезапись значения переменных
-        alpha = alpha0  # Возвращаем начальное значение шага
-        iterCount += 1
-        path.append(x0_0)
-
-    # Вывод результата
-    print("Минимум функции достигается в точке:", x0_0)
-    print("Значение функции в этой точке:", current_function(x0_0))
-    print("Количество итераций:", iterCount, "\n")
-    global ITER_COUNT_GLOBAL
-    ITER_COUNT_GLOBAL = iterCount
-    return np.array(path)
+    x0 = np.zeros(n)
+    x = jacobi(A, F, x0)
+    cond1 = la.cond(A)
+    exact_solution = np.linalg.solve(A, F)
+    error1 = la.norm(x - exact_solution)
+    return cond1, error1
 
 
-def fastestLowering():
-    # Определение начальной точки
-    x0 = np.array([4, -5])
+n = 3
+k_values = [i for i in range(1, 10)]
+cond_values = []
+error_values = []
 
-    # Параметры метода
-    tol = 1e-6  # Порог точности
-    eta = 0.1  # Начальный шаг метода
-    max_iter = 1000  # Максимальное число итераций
-    countIter = 0
-    path = [x0]
-    # Цикл метода
-    for i in range(max_iter):
-        grad = df(x0)  # Вычисление градиента
-        if np.linalg.norm(grad) < tol:  # Проверка на достижение точности
-            break
-        d = -grad  # Направление движения
-        a = eta  # Начальное значение шага
-        f0 = f(x0)
-        counter = 0
-        while True:
-            counter += 1
-            x1 = x0 + a * d  # Вычисление новой точки
-            f1 = f(x1)  # Вычисление значения функции в новой точке
-            if f1 > f0 + 0.5 * a * np.dot(grad, d):
-                # Если значение функции увеличилось, используем параболическую интерполяцию
-                a = -0.5 * np.dot(grad, d) * a ** 2 / (f1 - f0 - np.dot(grad, d) * a)
-            else:
-                # Иначе, мы нашли подходящее значение шага
-                break
-            if counter > 1000:
-                break
-        x0 = x1  # Перезапись значения переменных
-        countIter += 1
-        path.append(x0)
+for k in k_values:
+    cond, error = evaluate_jacobi(n, k)
+    cond_values.append(cond)
+    error_values.append(error)
 
-    # Вывод результата
-    print("Fastest lowering method")
-    print("Минимум функции достигается в точке:", x0)
-    print("Значение функции в этой точке:", f(x0))
-    print("Количество итераций:", countIter)
-    return np.array(path)
+plt.plot(k_values, cond_values, label="Number of Condition")
+plt.xlabel('k')
+plt.ylabel('Condition Number')
+plt.title('Dependency of Condition Number on k')
+plt.legend()
+plt.show()
 
-
-def conjugate_gradient(f, df, x0, tol=1e-6, max_iter=1000):
-    x = x0
-    g = df(x)
-    d = -g
-    k = 0
-    path = [x]
-    while k < max_iter:
-        alpha = 0.1
-        phi = lambda a: f(x + a * d)
-        phi_p = lambda a: np.dot(df(x + a * d), d)
-        alpha = backtracking_line_search(phi, phi_p, alpha)
-        x_prev = x
-        x = x + alpha * d
-        g_prev = g
-        g = df(x)
-        beta = np.dot(g, g) / np.dot(g_prev, g_prev)
-        d = -g + beta * d
-        if np.linalg.norm(x - x_prev) < tol:
-            break
-        k += 1
-        path.append(x)
-    print("Conjurate gradient method")
-    print("Количество итераций:", k)
-    print("Минимум функции:", x)
-    print("Значение функции в минимуме:", f(x))
-    return np.array(path)
-
-
-def backtracking_line_search(phi, phi_p, alpha, rho=0.5, c=1e-4):
-    while phi(alpha) > phi(0) + c * alpha * phi_p(0):
-        alpha = rho * alpha
-    return alpha
-
-
-def draw(path, name):
-    # print(path)
-    x0 = np.array([1, 1])
-
-    # создание сетки значений для графика
-    x = np.linspace(-10, 10, 100)
-    y = np.linspace(-10, 10, 100)
-    X, Y = np.meshgrid(x, y)
-    Z = func(X, Y)
-
-    # создание графика с линиями уровня
-    fig = plt.figure(figsize=(8, 8))
-    ax = fig.add_subplot(111)
-    cont = ax.contour(X, Y, Z, levels=np.linspace(-5000, 5000, 200), cmap='gray')
-    plt.clabel(cont, fontsize=10)
-
-    # отрисовка траектории
-    ax.scatter(x[0], x[1])
-    ax.plot([x[0] for x in path], [x[1] for x in path], 'r', linewidth=2)
-
-    # настройка внешнего вида графика
-    ax.set_xlim([-10, 10])
-    ax.set_ylim([-10, 10])
-    ax.set_xlabel('x')
-    ax.set_ylabel('y')
-    ax.set_title(name)
-
-    plt.show()
-
-
-wb = Workbook()
-sheet = wb.active
-column = 2
-sheet['A1'] = "Количество переменных"
-sheet['B1'] = "Степень обусловленности"
-sheet['C1'] = "Количество итераций"
-x0_0 = np.array([1])
-for i in range(1, 21):
-    for j in range(1, 21):
-        stepDivision(generate_quadratic_function(i, j), x0_0)
-        sheet['A' + str(column)] = i
-        sheet['B' + str(column)] = j
-        sheet['C' + str(column)] = ITER_COUNT_GLOBAL
-        column += 1
-    x0_0 = np.append(x0_0, [1])
-wb.save("example.xlsx")
+plt.plot(k_values, error_values, label="Solution Error")
+plt.xlabel('k')
+plt.ylabel('Error')
+plt.title('Dependency of Solution Error on k')
+plt.legend()
+plt.show()
